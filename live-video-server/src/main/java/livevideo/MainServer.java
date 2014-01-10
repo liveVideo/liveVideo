@@ -16,6 +16,7 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.PutObjectResult;
 
 class SerializableFile implements Serializable {
 
@@ -39,18 +40,19 @@ class SerializableFile implements Serializable {
 }
 
 public class MainServer {
-	
-	public static int folderIndex = -1;
-	static private ServerSocket socket;;
+	public static String folderIndex;
+	static private ServerSocket socket;
 	private static ObjectInputStream objectInputStream;
 	ByteArrayInputStream bais;
 
 	public static void main(String[] args) throws Exception {
 		socket = new ServerSocket(8888);
+		System.out.println("Server started");
 		while(true) {
 			Socket clientSocket = socket.accept();
 			final ArrayList<Object> ar = new ArrayList<Object>();
-			folderIndex++;
+			folderIndex=(clientSocket.getInetAddress()+"_"+clientSocket.getPort()).substring(1);
+			System.out.println(folderIndex);
 			ar.add(clientSocket);
 			(new Thread(new Runnable() {
 				
@@ -62,7 +64,7 @@ public class MainServer {
 							SerializableFile aviFragment = (SerializableFile) objectInputStream
 									.readObject();
 							System.out.println("Object read " + aviFragment.getName());
-							putS3(aviFragment, String.valueOf(folderIndex));
+							putS3(aviFragment, folderIndex);
 						}
 					} catch (Exception e) {
 						e.printStackTrace();
@@ -86,6 +88,7 @@ public class MainServer {
 		md.setContentLength(fis.getBytes().length);
 		PutObjectRequest req = new PutObjectRequest("livevideo342", "dir/" + directoryPartialPath + "/"
 				+ fis.getName(), new ByteArrayInputStream(fis.getBytes()), md);
-		s3.putObject(req);
+		PutObjectResult putObjectResult = s3.putObject(req);
+		System.out.println(putObjectResult.toString());
 	}
 }
