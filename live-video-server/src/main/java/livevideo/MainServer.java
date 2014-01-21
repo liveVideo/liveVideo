@@ -15,6 +15,8 @@ import org.apache.commons.io.FileUtils;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.AccessControlList;
+import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectResult;
@@ -113,6 +115,7 @@ public class MainServer {
 		PutObjectRequest req = new PutObjectRequest("livevideo342", "dir/"
 				+ directoryPartialPath + "/" + fis.getName(),
 				new ByteArrayInputStream(fis.getBytes()), md);
+		req.setCannedAcl(CannedAccessControlList.PublicRead);
 		PutObjectResult putObjectResult = s3.putObject(req);
 		System.out.println(putObjectResult.toString());
 	}
