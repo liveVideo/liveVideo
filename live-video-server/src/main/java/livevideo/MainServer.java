@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -24,14 +25,28 @@ class SerializableFile implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 	private byte[] array;
+	private String token;
 
-	public SerializableFile(File file) throws IOException {
+	public SerializableFile() {
+
+	}
+
+	public SerializableFile(String token) {
+		this.token = token;
+	}
+
+	public SerializableFile(File file, String token) throws IOException {
+		this.token = token;
 		fileName = file.getName();
 		this.array = FileUtils.readFileToByteArray(file);
 	}
 
 	public String getName() {
 		return fileName;
+	}
+
+	public String getToken() {
+		return token;
 	}
 
 	public byte[] getBytes() {
@@ -48,46 +63,56 @@ public class MainServer {
 	public static void main(String[] args) throws Exception {
 		socket = new ServerSocket(8888);
 		System.out.println("Server started");
-		while(true) {
+		while (true) {
 			Socket clientSocket = socket.accept();
 			final ArrayList<Object> ar = new ArrayList<Object>();
-			folderIndex=(clientSocket.getInetAddress()+"_"+clientSocket.getPort()).substring(1);
-			System.out.println(folderIndex);
 			ar.add(clientSocket);
 			(new Thread(new Runnable() {
-				
+
 				public void run() {
 					System.out.println("Socket accepted*************");
 					try {
-						objectInputStream = new ObjectInputStream(((Socket)ar.get(0)).getInputStream());
-						while (true) {
-							SerializableFile aviFragment = (SerializableFile) objectInputStream
-									.readObject();
-							System.out.println("Object read " + aviFragment.getName());
-							putS3(aviFragment, folderIndex);
+						Socket s = ((Socket) ar.get(0));
+						objectInputStream = new ObjectInputStream(s
+								.getInputStream());
+						SerializableFile aviFragment = (SerializableFile) objectInputStream
+								.readObject();
+						if (aviFragment.getToken().equalsIgnoreCase("0")) {
+							ObjectOutputStream oos = new ObjectOutputStream(s
+									.getOutputStream());
+							SerializableFile ob = new SerializableFile(""
+									+ System.currentTimeMillis());
+							oos.writeObject(ob);
+							oos.flush();
+							s.close();
+							return;
 						}
+						System.out.println("Object read "
+								+ aviFragment.getName());
+						System.out.println(aviFragment.getToken());
+						putS3(aviFragment, aviFragment.getToken());
+						s.close();
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
-					
-					
+
 				}
 			})).start();
-			
-			
+
 		}
-		
-		
+
 	}
 
-	protected static void putS3(SerializableFile fis, String directoryPartialPath) {
+	protected static void putS3(SerializableFile fis,
+			String directoryPartialPath) {
 		AWSCredentials cred = new BasicAWSCredentials("AKIAIAPMM5ZOSXNPLSXA",
 				"u8Fu+CVkH7SBPWWeF2SLzaWRS66x8+z4aF62YpWU");
 		AmazonS3Client s3 = new AmazonS3Client(cred);
 		ObjectMetadata md = new ObjectMetadata();
 		md.setContentLength(fis.getBytes().length);
-		PutObjectRequest req = new PutObjectRequest("livevideo342", "dir/" + directoryPartialPath + "/"
-				+ fis.getName(), new ByteArrayInputStream(fis.getBytes()), md);
+		PutObjectRequest req = new PutObjectRequest("livevideo342", "dir/"
+				+ directoryPartialPath + "/" + fis.getName(),
+				new ByteArrayInputStream(fis.getBytes()), md);
 		PutObjectResult putObjectResult = s3.putObject(req);
 		System.out.println(putObjectResult.toString());
 	}

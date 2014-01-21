@@ -5,8 +5,10 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.net.InetAddress;
 import java.net.Socket;
 
 import javax.swing.ImageIcon;
@@ -23,14 +25,28 @@ class SerializableFile implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 	private byte[] array;
+	private String token;
 
-	public SerializableFile(File file) throws IOException {
+	public SerializableFile() {
+
+	}
+
+	public SerializableFile(String token) {
+		this.token = token;
+	}
+
+	public SerializableFile(File file, String token) throws IOException {
+		this.token = token;
 		fileName = file.getName();
 		this.array = FileUtils.readFileToByteArray(file);
 	}
 
 	public String getName() {
 		return fileName;
+	}
+
+	public String getToken() {
+		return token;
 	}
 
 	public byte[] getBytes() {
@@ -41,14 +57,28 @@ class SerializableFile implements Serializable {
 class Recorder extends JFrame {
 	private static final long serialVersionUID = 1L;
 	private JLabel picLabel;
-	private Socket socket;
-	private ObjectOutputStream objectOutputStream;
 	private BufferedImage bi;
+	private String host;
+	private int port;
+	private String token;
 	public AVIOutputStream aviOutputStream = null;
 
-	public Recorder(String host) throws Exception {
-		socket = new Socket(host, 8888);
-		objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
+	private void retrieveToken() throws Exception {
+		Socket socket = new Socket(host, port);
+		ObjectOutputStream oos = new ObjectOutputStream(
+				socket.getOutputStream());
+		oos.writeObject(new SerializableFile("0"));
+		oos.flush();
+		ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
+		SerializableFile sf = (SerializableFile) ois.readObject();
+		token = sf.getToken();
+		socket.close();
+	}
+
+	public Recorder(String host, int port) throws Exception {
+		this.host = host;
+		this.port = port;
+		retrieveToken();
 		picLabel = new JLabel();
 		picLabel.setSize(640, 480);
 		add(picLabel);
@@ -71,10 +101,8 @@ class Recorder extends JFrame {
 		aviOutputStream.close();
 	}
 
-	public void sendImage(File f) throws IOException {
-		SerializableFile serializableFile = new SerializableFile(f);
-		objectOutputStream.writeObject(serializableFile);
-		objectOutputStream.flush();
+	public void sendImage(File f) throws Exception {
+		sendSF(new SerializableFile(f, token));
 	}
 
 	public static BufferedImage horizontalflip(BufferedImage img) {
@@ -87,16 +115,38 @@ class Recorder extends JFrame {
 		g.dispose();
 		return dimg;
 	}
+
+	public void sendSF(SerializableFile sf) throws Exception {
+		Socket socket = new Socket(host, port);
+		ObjectOutputStream oos = new ObjectOutputStream(
+				socket.getOutputStream());
+		oos.writeObject(sf);
+		oos.flush();
+		socket.close();
+	}
 }
 
 public class Main {
 	public static int fps = 10;
 
 	public static void main(String[] args) throws Exception {
+		String host;
+		int port;
+		if (args.length < 2) {
+			port = 8888;
+			if (args.length == 0)
+				host = "livevideo-elb-receive-926360022.eu-west-1.elb.amazonaws.com";
+			else
+				host = args[0];
+		} else {
+			host = args[0];
+			port = Integer.parseInt(args[1]);
+		}
+		host = InetAddress.getByName(host).getHostAddress();
 		final Webcam web = Webcam.getDefault();
 		web.setViewSize(new Dimension(640, 480));
 		web.open();
-		final Recorder recorder = new Recorder(args[0]);
+		final Recorder recorder = new Recorder(host, port);
 		recorder.setSize(640, 480);
 		recorder.setVisible(true);
 		final Thread videoMaker = (new Thread(new Runnable() {
@@ -120,7 +170,7 @@ public class Main {
 							fisierDeScriere.renameTo(new File(trueFileName));
 							fisierDeScriere = new File(trueFileName);
 							recorder.sendImage(fisierDeScriere);
-							// fisierDeScriere.delete();
+							fisierDeScriere.delete();
 							fisierDeScriere = new File("video.avi");
 							recorder.aviOutputStream = new AVIOutputStream(
 									fisierDeScriere,
