@@ -18,6 +18,7 @@ import javax.swing.JLabel;
 import org.apache.commons.io.FileUtils;
 
 import com.github.sarxos.webcam.Webcam;
+import com.xuggle.xuggler.Converter;
 
 class SerializableFile implements Serializable {
 
@@ -101,8 +102,12 @@ class Recorder extends JFrame {
 		aviOutputStream.close();
 	}
 
-	public void sendImage(File f) throws Exception {
-		sendSF(new SerializableFile(f, token));
+	public void sendImage(String f) throws Exception {
+		System.out.println("sending " + f);
+		File file = transcode(f);
+		(new File(f + ".avi")).delete();
+		sendSF(new SerializableFile(file, token));
+		file.delete();
 	}
 
 	public static BufferedImage horizontalflip(BufferedImage img) {
@@ -123,6 +128,24 @@ class Recorder extends JFrame {
 		oos.writeObject(sf);
 		oos.flush();
 		socket.close();
+	}
+
+	public static File transcode(String f) throws Exception {
+		// This is the converter object we will use.
+		Converter converter = new Converter();
+
+		// These are the arguments to pass to the converter object.
+		// For H264 transcoding, the -vpreset option is very
+		// important. Here, presetsFile is a File object corresponding
+		// to a libx264 video presets file. These are in the
+		// /usr/local/share/ffmpeg directory.
+		String[] arguments = { f + ".avi", "-acodec", "libfaac",
+				"-asamplerate", "44100", "-vcodec", "libx264", f + ".mp4" };
+
+		// Finally, we run the transcoder with the options we provided.
+		converter.run(converter.parseOptions(converter.defineOptions(),
+				arguments));
+		return new File(f + ".mp4");
 	}
 }
 
@@ -165,12 +188,19 @@ public class Main {
 					while (true) {
 						if (System.nanoTime() - videoFragmentTime >= 10 * md) {
 							recorder.aviOutputStream.close();
-							String trueFileName = "video"
-									+ System.currentTimeMillis() + ".avi";
-							fisierDeScriere.renameTo(new File(trueFileName));
-							fisierDeScriere = new File(trueFileName);
-							recorder.sendImage(fisierDeScriere);
-							fisierDeScriere.delete();
+							final String trueFileName = "video"
+									+ System.currentTimeMillis();
+							fisierDeScriere.renameTo(new File(trueFileName
+									+ ".avi"));
+							(new Thread(new Runnable() {
+								public void run() {
+									try {
+										recorder.sendImage(trueFileName);
+									} catch (Exception e) {
+										e.printStackTrace();
+									}
+								}
+							})).start();
 							fisierDeScriere = new File("video.avi");
 							recorder.aviOutputStream = new AVIOutputStream(
 									fisierDeScriere,
@@ -187,7 +217,7 @@ public class Main {
 				} catch (Exception e) {
 					System.out.println(e.getMessage());
 					e.printStackTrace();
-					return;
+					System.exit(-1);
 				}
 			}
 		}));
